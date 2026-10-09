@@ -1,0 +1,252 @@
+
+name: Build NEXORA BD APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platforms;android-35" \
+            "build-tools;35.0.0" "platform-tools"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Generate Android project
+        shell: bash
+        run: |
+          mkdir -p app/src/main/java/com/nexorabd/shop
+
+          cat > settings.gradle.kts <<'EOF'
+          pluginManagement {
+              repositories {
+                  google()
+                  mavenCentral()
+                  gradlePluginPortal()
+              }
+          }
+          dependencyResolutionManagement {
+              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+          }
+          rootProject.name = "NexoraBD"
+          include(":app")
+          EOF
+
+          cat > build.gradle.kts <<'EOF'
+          plugins {
+              id("com.android.application") version "8.7.3" apply false
+              id("org.jetbrains.kotlin.android") version "2.0.21" apply false
+          }
+          EOF
+
+          cat > gradle.properties <<'EOF'
+          org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
+          android.useAndroidX=true
+          kotlin.code.style=official
+          EOF
+
+          cat > app/build.gradle.kts <<'EOF'
+          plugins {
+              id("com.android.application")
+              id("org.jetbrains.kotlin.android")
+          }
+
+          android {
+              namespace = "com.nexorabd.shop"
+              compileSdk = 35
+
+              defaultConfig {
+                  applicationId = "com.nexorabd.shop"
+                  minSdk = 23
+                  targetSdk = 35
+                  versionCode = 1
+                  versionName = "1.0"
+              }
+          }
+          EOF
+
+          cat > app/src/main/AndroidManifest.xml <<'EOF'
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+              <uses-permission android:name="android.permission.INTERNET"/>
+
+              <application
+                  android:label="NEXORA BD"
+                  android:theme="@android:style/Theme.Material.Light.NoActionBar"
+                  android:usesCleartextTraffic="false">
+
+                  <activity
+                      android:name=".MainActivity"
+                      android:exported="true">
+
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN"/>
+                          <category android:name="android.intent.category.LAUNCHER"/>
+                      </intent-filter>
+                  </activity>
+              </application>
+          </manifest>
+          EOF
+
+          cat > app/src/main/java/com/nexorabd/shop/MainActivity.kt <<'EOF'
+          package com.nexorabd.shop
+
+          import android.app.Activity
+          import android.os.Bundle
+          import android.graphics.Color
+          import android.view.Gravity
+          import android.webkit.CookieManager
+          import android.webkit.WebView
+          import android.webkit.WebViewClient
+          import android.webkit.WebChromeClient
+          import android.widget.Button
+          import android.widget.LinearLayout
+          import android.widget.TextView
+
+          class MainActivity : Activity() {
+              private lateinit var web: WebView
+              private val base = "https://nexorabd.free.nf/"
+
+              override fun onCreate(savedInstanceState: Bundle?) {
+                  super.onCreate(savedInstanceState)
+
+                  window.statusBarColor = Color.rgb(18, 39, 74)
+                  CookieManager.getInstance().setAcceptCookie(true)
+
+                  val root = LinearLayout(this).apply {
+                      orientation = LinearLayout.VERTICAL
+                      setBackgroundColor(Color.WHITE)
+                  }
+
+                  val header = TextView(this).apply {
+                      text = "NEXORA BD"
+                      textSize = 24f
+                      gravity = Gravity.CENTER
+                      setTextColor(Color.WHITE)
+                      setBackgroundColor(Color.rgb(18, 39, 74))
+                      setPadding(12, 18, 12, 18)
+                  }
+
+                  val status = TextView(this).apply {
+                      text = "Online Shopping"
+                      gravity = Gravity.CENTER
+                      setPadding(8, 6, 8, 6)
+                      setTextColor(Color.rgb(18, 39, 74))
+                  }
+
+                  web = WebView(this).apply {
+                      settings.javaScriptEnabled = true
+                      settings.domStorageEnabled = true
+                      settings.useWideViewPort = true
+                      settings.loadWithOverviewMode = true
+                      settings.javaScriptCanOpenWindowsAutomatically = false
+                      webChromeClient = WebChromeClient()
+                      webViewClient = object : WebViewClient() {
+                          override fun onPageFinished(
+                              view: WebView?, url: String?
+                          ) {
+                              status.text = "NEXORA BD • Shopping"
+                          }
+                      }
+                  }
+
+                  CookieManager.getInstance()
+                      .setAcceptThirdPartyCookies(web, true)
+
+                  val nav = LinearLayout(this).apply {
+                      gravity = Gravity.CENTER
+                      setBackgroundColor(Color.rgb(245, 246, 250))
+                  }
+
+                  fun addNav(label: String, path: String) {
+                      val button = Button(this).apply {
+                          text = label
+                          isAllCaps = false
+                          textSize = 11f
+                          setOnClickListener {
+                              web.loadUrl(base + path)
+                          }
+                      }
+                      nav.addView(
+                          button,
+                          LinearLayout.LayoutParams(0, 52, 1f)
+                      )
+                  }
+
+                  addNav("Home", "")
+                  addNav("Shop", "shop/")
+                  addNav("Cart", "cart/")
+                  addNav("Account", "my-account/")
+
+                  root.addView(header)
+                  root.addView(status)
+                  root.addView(
+                      web,
+                      LinearLayout.LayoutParams(-1, 0, 1f)
+                  )
+                  root.addView(nav)
+
+                  setContentView(root)
+
+                  if (savedInstanceState == null) {
+                      web.loadUrl(base)
+                  } else {
+                      web.restoreState(savedInstanceState)
+                  }
+              }
+
+              override fun onSaveInstanceState(outState: Bundle) {
+                  web.saveState(outState)
+                  super.onSaveInstanceState(outState)
+              }
+
+              @Deprecated("Deprecated in Android API")
+              override fun onBackPressed() {
+                  if (::web.isInitialized && web.canGoBack()) {
+                      web.goBack()
+                  } else {
+                      super.onBackPressed()
+                  }
+              }
+          }
+          EOF
+
+      - name: Build debug APK
+        run: gradle --no-daemon assembleDebug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: NEXORA-BD-APK
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 7
